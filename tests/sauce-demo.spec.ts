@@ -15,14 +15,14 @@ const VALID_PASS = 'secret_sauce';
 class LoginPage {
   readonly page: Page;
   readonly usernameField: Locator;
-  readonly passField: Locator;
+  readonly passwordField: Locator;
   readonly loginButton: Locator;
   readonly errorMsg: Locator;
 
   constructor(page: Page) {
     this.page = page;
     this.usernameField = page.getByPlaceholder('Username');
-    this.passField = page.getByPlaceholder('Password');
+    this.passwordField = page.getByPlaceholder('Password');
     this.loginButton = page.getByRole('button', { name: 'Login' });
     this.errorMsg = page.locator('[data-test="error"]');
   }
@@ -33,7 +33,7 @@ class LoginPage {
 
   async login(username: string, password: string) {
     await this.usernameField.fill(username);
-    await this.passField.fill(password);
+    await this.passwordField.fill(password);
     await this.loginButton.click();
   }
 }
@@ -85,25 +85,36 @@ test.describe('Inventory', () => {
   });
 
   test('inventory page shows 6 products', async ({ page }) => {
-    // TODO: assert that there are exactly 6 inventory items on the page
-    // hint: the items are inside elements with class 'inventory_item'
+    await expect(page.locator('.inventory_item')).toHaveCount(6);
   });
 
   test('each product has a name, price, and Add to Cart button', async ({ page }) => {
-    // TODO: pick the first inventory item
-    // assert it has a name (non-empty text), a price, and an "Add to cart" button
+    const firstItem = page.locator('.inventory_item').first();
+    await expect(firstItem.locator('.inventory_item_name')).toBeVisible();
+    await expect(firstItem.locator('.inventory_item_price')).toBeVisible();
+    await expect(firstItem.getByRole('button', { name: 'Add to cart' })).toBeVisible();
   });
 
   test('sort by price low to high', async ({ page }) => {
-    // TODO: select 'Price (low to high)' from the sort dropdown
-    // get all prices, assert the first is less than or equal to the last
-    // hint: prices look like '$7.99' — you'll need to strip the '$'
+    await page.locator('[data-test="product-sort-container"]').selectOption('lohi');
+    const prices = await page.locator('.inventory_item_price').allTextContents();
+
+    expect(prices.length).toBeGreaterThan(1);
+
+    for (let i = 0; i < prices.length - 1; i++) {
+      const current = parseFloat(prices[i].replace('$', ''));
+      const next = parseFloat(prices[i + 1].replace('$', ''));
+      expect(current).toBeLessThanOrEqual(next);
+    }
   });
 
   test('sort by name Z to A', async ({ page }) => {
-    // TODO: select 'Name (Z to A)' from the sort dropdown
-    // get the first product name, assert it starts with a letter later in the alphabet
-    // than the last product name
+    await page.locator('[data-test="product-sort-container"]').selectOption('za');
+    const names = await page.locator('.inventory_item_name').allTextContents();
+
+    for (let i = 0; i < names.length - 1; i++) {
+      expect(names[i] >= names[i + 1]).toBe(true);
+    }
   });
 });
 
@@ -115,20 +126,21 @@ test.describe('Cart', () => {
   });
 
   test('adding an item updates the cart badge', async ({ page }) => {
-    // TODO: click "Add to cart" on the first product
-    // assert the cart badge shows '1'
+    await page.locator('.inventory_item').first().getByRole('button', { name: 'Add to cart' }).click();
+    await expect(page.locator('.shopping_cart_badge')).toHaveText('1');
   });
 
   test('added item appears in the cart page', async ({ page }) => {
-    // TODO: click "Add to cart" on the first product
-    // remember the product name
-    // click the cart icon to go to the cart
-    // assert the product name appears in the cart
+    await page.locator('.inventory_item').first().getByRole('button', { name: 'Add to cart' }).click();
+    const productName = await page.locator('.inventory_item_name').first().textContent();
+    await page.locator('.shopping_cart_link').click();
+    await expect(page.locator('.inventory_item_name')).toHaveText(productName!);
   });
 
   test('removing an item from the cart updates the badge', async ({ page }) => {
-    // TODO: add an item, then click "Remove" on it
-    // assert the cart badge is no longer visible
+    await page.locator('.inventory_item').first().getByRole('button', { name: 'Add to cart' }).click();
+    await page.locator('.inventory_item').first().getByRole('button', { name: 'Remove' }).click();
+    await expect(page.locator('.shopping_cart_badge')).not.toBeVisible();
   });
 });
 
@@ -137,26 +149,28 @@ test.describe('Cart', () => {
 test.describe('Checkout', () => {
   test.beforeEach(async ({ page }) => {
     await loginAndGo(page);
-    // Add an item and go to cart
     await page.locator('.inventory_item').first().getByRole('button', { name: 'Add to cart' }).click();
     await page.locator('.shopping_cart_link').click();
   });
 
   test('checkout button navigates to info form', async ({ page }) => {
-    // TODO: click the "Checkout" button
-    // assert the URL contains 'checkout-step-one'
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await expect(page).toHaveURL(/checkout-step-one/);
   });
 
   test('submitting empty checkout form shows error', async ({ page }) => {
-    // TODO: click "Checkout", then click "Continue" without filling in fields
-    // assert an error message appears
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('[data-test="error"]')).toBeVisible();
   });
 
   test('complete checkout flow shows confirmation', async ({ page }) => {
-    // TODO: click "Checkout"
-    // fill in first name, last name, zip code
-    // click "Continue"
-    // click "Finish"
-    // assert you see a confirmation message like "Thank you for your order"
+    await page.getByRole('button', { name: 'Checkout' }).click();
+    await page.locator('[data-test="firstName"]').fill('Annie');
+    await page.locator('[data-test="lastName"]').fill('Abrahms');
+    await page.locator('[data-test="postalCode"]').fill('11237');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: 'Finish' }).click();
+    await expect(page.locator('.complete-header')).toHaveText('Thank you for your order!');
   });
 });
