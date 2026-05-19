@@ -210,14 +210,16 @@ test.describe('Page load & initial state', () => {
     await expect(page.locator('.icon-pause')).not.toBeVisible();
   });
 
-  test('volume slider defaults to 80', async ({ page }) => {
+  test('volume slider defaults to 80', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(player.volumeSlider).toHaveValue('80');
     await expect(player.volumeValue).toHaveText('80%');
   });
 
-  test('mute button is visible and labelled "Mute"', async ({ page }) => {
+  test('mute button is visible and labelled "Mute"', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(player.btnMute).toBeVisible();
@@ -674,6 +676,10 @@ test.describe('Seeking', () => {
 // 6 · VOLUME CONTROLS
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Volume controls', () => {
+  test.beforeEach(({ }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
+  });
+
   test('dragging the volume slider to 50 shows "50%"', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
@@ -776,6 +782,21 @@ test.describe('Volume controls', () => {
     await player.btnUnmute.click();
 
     await expect(player.volumeValue).toHaveText('40%');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6b · MOBILE RESPONSIVE
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Mobile responsive', () => {
+  test.beforeEach(({ }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'Mobile-only tests');
+  });
+
+  test('volume controls are hidden on mobile', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await expect(page.locator('.volume-row')).not.toBeVisible();
   });
 });
 
@@ -1169,7 +1190,8 @@ test.describe('Accessibility', () => {
     await expect(player.seekSlider).toBeVisible();
   });
 
-  test('Volume slider has aria-label="Volume"', async ({ page }) => {
+  test('Volume slider has aria-label="Volume"', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(player.volumeSlider).toBeVisible();
@@ -1190,7 +1212,8 @@ test.describe('Accessibility', () => {
     await expect(page.locator('.btn-play')).toHaveAttribute('aria-label', 'Pause');
   });
 
-  test('Mute button aria-label updates to "Unmute" when muted', async ({ page }) => {
+  test('Mute button aria-label updates to "Unmute" when muted', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
 
@@ -1302,7 +1325,8 @@ test.describe('Edge cases', () => {
     await expect(player.trackItem(2)).toHaveClass(/active/);
   });
 
-  test('volume slider min boundary: cannot go below 0', async ({ page }) => {
+  test('volume slider min boundary: cannot go below 0', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
 
@@ -1312,7 +1336,8 @@ test.describe('Edge cases', () => {
     await expect(player.volumeValue).toHaveText('0%');
   });
 
-  test('volume slider max boundary: cannot exceed 100', async ({ page }) => {
+  test('volume slider max boundary: cannot exceed 100', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     const player = new DjPlayerPage(page);
     await player.goto();
 
@@ -1456,7 +1481,8 @@ test.describe('Visual feedback', () => {
     await expect(player.trackItem(2).locator('.eq-bars')).toBeVisible();
   });
 
-  test('volume persists when switching tracks', async ({ page }) => {
+  test('volume persists when switching tracks', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
     await stubAudio(page);
     const player = new DjPlayerPage(page);
     await player.goto();
