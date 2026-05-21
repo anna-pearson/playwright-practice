@@ -1,0 +1,23 @@
+services:
+  app:
+    build:
+      context: .
+      target: app
+    ports:
+      - "4173:4173"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4173/api/tracks').then(r => { if (!r.ok) process.exit(1) })"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+
+  tests:
+    build:
+      context: .
+      target: tests
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      - CI=true
+      - BASE_URL=http://app:4173

@@ -69,7 +69,8 @@ test.describe('Network interception', () => {
     const externalRequests: string[] = [];
     page.on('request', (req) => {
       const url = new URL(req.url());
-      if (url.hostname !== 'localhost') {
+      const baseHost = new URL(process.env.BASE_URL || 'http://localhost').hostname;
+      if (url.hostname !== 'localhost' && url.hostname !== baseHost) {
         externalRequests.push(req.url());
       }
     });

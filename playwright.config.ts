@@ -23,7 +23,7 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: 'http://localhost:4173',
+    baseURL: process.env.BASE_URL || 'http://localhost:4173',
 
     headless: true,
 
@@ -33,9 +33,12 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
 
-  webServer: {
-    command: 'node server.js',
-    port: 4173,
-    reuseExistingServer: !process.env.CI,
-  },
+  // Skip webServer when BASE_URL is set (e.g., in Docker where the app runs in a separate container)
+  ...(!process.env.BASE_URL && {
+    webServer: {
+      command: 'node server.js',
+      port: 4173,
+      reuseExistingServer: !process.env.CI,
+    },
+  }),
 });
