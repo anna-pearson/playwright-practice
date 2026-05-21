@@ -1498,3 +1498,609 @@ test.describe('Visual feedback', () => {
     await expect(player.volumeValue).toHaveText('40%');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 14 · VISUAL REGRESSION
+// Uses toHaveScreenshot() to catch unintended layout or styling changes.
+// Baseline images are generated on first run; subsequent runs compare against them.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Visual regression', () => {
+  test('default state', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    // Mask the waveform canvas — it can render differently across runs
+    await expect(page).toHaveScreenshot('default-state.png', {
+      mask: [player.waveform],
+    });
+  });
+
+  test('playing state', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.clickTrack(0);
+    await expect(player.btnPause).toBeVisible();
+    await expect(page).toHaveScreenshot('playing-state.png', {
+      mask: [player.waveform],
+    });
+  });
+
+  test('genre filter active', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.genreBtn('Techno').click();
+    await expect(player.trackItems).toHaveCount(1);
+    await expect(page).toHaveScreenshot('genre-filter-active.png', {
+      mask: [player.waveform],
+    });
+  });
+
+  test('search results', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.searchInput.fill('midnight');
+    await expect(player.trackItems).toHaveCount(1);
+    await expect(page).toHaveScreenshot('search-results.png', {
+      mask: [player.waveform],
+    });
+  });
+
+  test('no results state', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.searchInput.fill('xyzxyzxyz');
+    await expect(player.noResults).toBeVisible();
+    await expect(page).toHaveScreenshot('no-results.png', {
+      mask: [player.waveform],
+    });
+  });
+
+  test('muted state', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.btnMute.click();
+    await expect(player.volumeValue).toHaveText('0%');
+    await expect(page).toHaveScreenshot('muted-state.png', {
+      mask: [player.waveform],
+    });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 15 · DRAG SEEKING
+// Tests the mousedown → mousemove → mouseup seeking interaction on the
+// progress bar, which is more complex than a single click.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Drag seeking', () => {
+  test('dragging the progress bar seeks through the track', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.clickTrack(0); // 20s track
+
+    const progressTrack = page.locator('.progress-track');
+    const box = await progressTrack.boundingBox();
+    if (!box) throw new Error('Progress bar not found');
+
+    // Drag from 25% to 75% of the progress bar
+    const startX = box.x + box.width * 0.25;
+    const endX = box.x + box.width * 0.75;
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(startX, y);
+    await page.mouse.down();
+    await page.mouse.move(endX, y, { steps: 5 });
+    await page.mouse.up();
+
+    // Time should be roughly 75% of 20s ≈ 15s
+    const time = await player.timeCurrent.textContent();
+    const [min, sec] = time!.split(':').map(Number);
+    const totalSec = min * 60 + sec;
+    expect(totalSec).toBeGreaterThanOrEqual(13);
+    expect(totalSec).toBeLessThanOrEqual(17);
+  });
+
+  test('progress fill updates during a drag', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.clickTrack(0);
+
+    const progressTrack = page.locator('.progress-track');
+    const box = await progressTrack.boundingBox();
+    if (!box) throw new Error('Progress bar not found');
+
+    const midX = box.x + box.width * 0.5;
+    const y = box.y + box.height / 2;
+
+    await page.mouse.move(box.x + box.width * 0.1, y);
+    await page.mouse.down();
+    await page.mouse.move(midX, y, { steps: 3 });
+
+    // While still dragging, check fill width is roughly 50%
+    const width = await player.progressFill.evaluate((el) =>
+      parseFloat((el as HTMLElement).style.width));
+    expect(width).toBeGreaterThanOrEqual(40);
+    expect(width).toBeLessThanOrEqual(60);
+
+    await page.mouse.up();
+  });
+
+  test('dragging to the very start resets time to 0:00', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+    await player.clickTrack(0);
+
+    // Wait for playback to tick forward
+    await expect(player.timeCurrent).not.toHaveText('0:00', { timeout: 3000 });
+
+    const progressTrack = page.locator('.progress-track');
+    const box = await progressTrack.boundingBox();
+    if (!box) throw new Error('Progress bar not found');
+
+    // Click at the very start of the bar
+    await page.mouse.click(box.x + 1, box.y + box.height / 2);
+    await expect(player.timeCurrent).toHaveText('0:00');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 16 · PLAYBACK + FILTER INTERACTION
+// Verifies that filtering the tracklist while a track is playing does not
+// disrupt playback or corrupt the active-track highlight.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Playback + filter interaction', () => {
+  test('active track stays highlighted when its genre is selected', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(1); // Warehouse Echoes — Techno
+    await expect(player.trackItem(1)).toHaveClass(/active/);
+
+    await player.genreBtn('Techno').click();
+    // Warehouse Echoes is the only Techno track → item 0 in the filtered list
+    await expect(player.trackItems).toHaveCount(1);
+    await expect(player.trackItem(0)).toHaveClass(/active/);
+  });
+
+  test('playing track continues when filtered out of the visible list', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0); // Midnight Sessions — Deep House
+    await expect(player.btnPause).toBeVisible();
+
+    // Filter to Techno — Midnight Sessions is Deep House, so it disappears
+    await player.genreBtn('Techno').click();
+    await expect(player.trackItems).toHaveCount(1);
+
+    // Playback should still be active — now-playing panel is unchanged
+    await expect(player.trackTitle).toHaveText('Midnight Sessions');
+    await expect(player.btnPause).toBeVisible();
+  });
+
+  test('clearing genre filter while playing restores active highlight', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0); // Midnight Sessions — Deep House
+    await player.genreBtn('Techno').click(); // hide the playing track
+    await player.genreBtn('All').click();    // show all again
+
+    await expect(player.trackItems).toHaveCount(6);
+    await expect(player.trackItem(0)).toHaveClass(/active/);
+  });
+
+  test('searching while playing keeps the now-playing panel intact', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0); // Midnight Sessions
+    await expect(player.btnPause).toBeVisible();
+
+    await player.searchInput.fill('warehouse');
+    await expect(player.trackItems).toHaveCount(1);
+
+    // Now-playing panel still shows Midnight Sessions, not the search result
+    await expect(player.trackTitle).toHaveText('Midnight Sessions');
+    await expect(player.btnPause).toBeVisible();
+  });
+
+  test('Next track works correctly after filtering and clearing', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await player.genreBtn('Techno').click();
+    await player.genreBtn('All').click();
+
+    await player.btnNext.click();
+    await expect(player.trackTitle).toHaveText('Warehouse Echoes');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 17 · TRACK NUMBER DISPLAY
+// The tracklist shows a numeric index (1, 2, 3…) for each track when idle,
+// replacing it with EQ bars for the active track during playback.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Track number display', () => {
+  test('each track shows its number when not playing', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    for (let i = 0; i < 6; i++) {
+      await expect(player.trackItem(i).locator('.item-num')).toHaveText(String(i + 1));
+    }
+  });
+
+  test('active track shows EQ bars instead of its number while playing', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(2); // Liquid Sunshine
+    await expect(player.trackItem(2).locator('.eq-bars')).toBeVisible();
+    await expect(player.trackItem(2).locator('.item-num')).not.toHaveText('3');
+  });
+
+  test('non-active tracks still show their numbers while another plays', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(2);
+    await expect(player.trackItem(0).locator('.item-num')).toHaveText('1');
+    await expect(player.trackItem(1).locator('.item-num')).toHaveText('2');
+    await expect(player.trackItem(3).locator('.item-num')).toHaveText('4');
+    await expect(player.trackItem(4).locator('.item-num')).toHaveText('5');
+    await expect(player.trackItem(5).locator('.item-num')).toHaveText('6');
+  });
+
+  test('pausing restores the track number on the active track', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await expect(player.trackItem(0).locator('.eq-bars')).toBeVisible();
+
+    await player.btnPause.click();
+    await expect(player.trackItem(0).locator('.eq-bars')).toHaveCount(0);
+    await expect(player.trackItem(0).locator('.item-num')).toHaveText('1');
+  });
+
+  test('filtered list renumbers tracks starting from 1', async ({ page }) => {
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.genreBtn('Techno').click();
+    await expect(player.trackItems).toHaveCount(1);
+    // Warehouse Echoes is track 2 overall, but shows "1" in the filtered view
+    await expect(player.trackItem(0).locator('.item-num')).toHaveText('1');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 18 · SEARCH INPUT ISOLATION
+// Verifies that global keyboard shortcuts (mute, track skip) are suppressed
+// when the search input is focused so typing doesn't trigger player actions.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Search input isolation', () => {
+  test('"m" key in search does not toggle mute', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.searchInput.focus();
+    await page.keyboard.type('m');
+
+    await expect(player.volumeValue).toHaveText('80%');
+    await expect(player.searchInput).toHaveValue('m');
+  });
+
+  test('"M" (uppercase) in search does not toggle mute', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.searchInput.focus();
+    await page.keyboard.type('M');
+
+    await expect(player.volumeValue).toHaveText('80%');
+    await expect(player.searchInput).toHaveValue('M');
+  });
+
+  test('Shift+ArrowRight in search does not skip track', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await player.searchInput.focus();
+    await page.keyboard.press('Shift+ArrowRight');
+
+    await expect(player.trackTitle).toHaveText('Midnight Sessions');
+  });
+
+  test('Shift+ArrowLeft in search does not skip track', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(2);
+    await player.searchInput.focus();
+    await page.keyboard.press('Shift+ArrowLeft');
+
+    await expect(player.trackTitle).toHaveText('Liquid Sunshine');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 19 · PLAY/PAUSE RESILIENCE
+// Stress-tests repeated and rapid state changes to ensure the UI stays
+// consistent and no event listeners leak or desync.
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Play/pause resilience', () => {
+  test('multiple play/pause cycles leave the UI in a consistent state', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.startPlayback();
+
+    for (let i = 0; i < 5; i++) {
+      await player.btnPause.click();
+      await expect(player.btnPlay).toBeVisible();
+      await expect(player.appRoot).not.toHaveClass(/playing/);
+
+      await player.startPlayback();
+      await expect(player.btnPause).toBeVisible();
+      await expect(player.appRoot).toHaveClass(/playing/);
+    }
+  });
+
+  test('rapid play/pause toggling does not break the UI', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+
+    // Rapidly toggle 10 times via Space (even count → back to playing)
+    for (let i = 0; i < 10; i++) {
+      await page.keyboard.press('Space');
+    }
+
+    await expect(player.btnPause).toBeVisible();
+    await expect(player.trackTitle).toHaveText('Midnight Sessions');
+  });
+
+  test('switching tracks mid-playback leaves a clean state', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await expect(player.btnPause).toBeVisible();
+
+    await player.clickTrack(3);
+    await expect(player.trackTitle).toHaveText('Cloud Nine');
+    await expect(player.btnPause).toBeVisible();
+    await expect(player.appRoot).toHaveClass(/playing/);
+
+    // Only one track should be active
+    const activeItems = page.locator('.tracklist-item.active');
+    await expect(activeItems).toHaveCount(1);
+    await expect(player.trackItem(3)).toHaveClass(/active/);
+  });
+
+  test('pause, switch track, verify new track auto-plays', async ({ page }) => {
+    await stubAudio(page);
+    const player = new DjPlayerPage(page);
+    await player.goto();
+
+    await player.clickTrack(0);
+    await player.btnPause.click();
+    await expect(player.btnPlay).toBeVisible();
+
+    await player.clickTrack(4);
+    await expect(player.trackTitle).toHaveText('Neon Dreams');
+    // Clicking a track auto-plays
+    await expect(player.btnPause).toBeVisible();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 20 · PERFORMANCE
+// Measures Core Web Vitals and page load performance using the browser's
+// built-in Performance API. Ensures the app meets modern web performance
+// standards (thresholds based on Google's "good" Web Vitals benchmarks).
+// ─────────────────────────────────────────────────────────────────────────────
+test.describe('Performance', () => {
+
+  test('page load timing: TTFB, DOMContentLoaded, and full load', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const timing = await page.evaluate(() => {
+      const [nav] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+      return {
+        ttfb: nav.responseStart - nav.startTime,
+        domContentLoaded: nav.domContentLoadedEventEnd - nav.startTime,
+        load: nav.loadEventEnd - nav.startTime,
+      };
+    });
+
+    expect(timing.ttfb, 'Time to First Byte').toBeLessThan(500);
+    expect(timing.domContentLoaded, 'DOMContentLoaded').toBeLessThan(2000);
+    expect(timing.load, 'Full page load').toBeLessThan(3000);
+  });
+
+  test('First Contentful Paint is under 1.5 seconds', async ({ page }, testInfo) => {
+    // FCP PerformanceObserver is Chromium-only
+    test.skip(testInfo.project.name !== 'chromium', 'Paint Timing API is Chromium-only');
+
+    await page.addInitScript(() => {
+      (window as any).__fcp = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === 'first-contentful-paint') {
+            (window as any).__fcp = entry.startTime;
+          }
+        }
+      }).observe({ type: 'paint', buffered: true });
+    });
+
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+    await page.waitForTimeout(500);
+
+    const fcp = await page.evaluate(() => (window as any).__fcp);
+    expect(fcp, 'FCP should be captured').toBeGreaterThan(0);
+    expect(fcp, 'First Contentful Paint').toBeLessThan(1500);
+  });
+
+  test('Largest Contentful Paint is under 2.5 seconds', async ({ page }, testInfo) => {
+    // LCP PerformanceObserver is Chromium-only
+    test.skip(testInfo.project.name !== 'chromium', 'LCP API is Chromium-only');
+
+    await page.addInitScript(() => {
+      (window as any).__lcp = 0;
+      new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const last = entries[entries.length - 1];
+        (window as any).__lcp = last.startTime;
+      }).observe({ type: 'largest-contentful-paint', buffered: true });
+    });
+
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+    // Allow time for the LCP observer to fire
+    await page.waitForTimeout(500);
+
+    const lcp = await page.evaluate(() => (window as any).__lcp);
+    expect(lcp, 'LCP should be captured').toBeGreaterThan(0);
+    expect(lcp, 'Largest Contentful Paint').toBeLessThan(2500);
+  });
+
+  test('Cumulative Layout Shift is under 0.1', async ({ page }, testInfo) => {
+    // CLS PerformanceObserver is Chromium-only
+    test.skip(testInfo.project.name !== 'chromium', 'Layout Shift API is Chromium-only');
+
+    await page.addInitScript(() => {
+      (window as any).__cls = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (!(entry as any).hadRecentInput) {
+            (window as any).__cls += (entry as any).value;
+          }
+        }
+      }).observe({ type: 'layout-shift', buffered: true });
+    });
+
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+    await page.waitForTimeout(1000);
+
+    const cls = await page.evaluate(() => (window as any).__cls);
+    expect(cls, 'Cumulative Layout Shift').toBeLessThan(0.1);
+  });
+
+  test('/api/tracks responds within 200ms', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const apiDuration = await page.evaluate(() => {
+      const entry = (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+        .find(r => r.name.includes('/api/tracks'));
+      return entry ? entry.duration : null;
+    });
+
+    expect(apiDuration, 'API resource entry should exist').not.toBeNull();
+    expect(apiDuration!, '/api/tracks response time').toBeLessThan(200);
+  });
+
+  test('total page weight is under 500 KB', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const totalBytes = await page.evaluate(() => {
+      return (performance.getEntriesByType('resource') as PerformanceResourceTiming[])
+        .reduce((sum, r) => sum + (r.transferSize || 0), 0);
+    });
+
+    const totalKB = totalBytes / 1024;
+    expect(totalKB, 'Total page weight in KB').toBeLessThan(500);
+  });
+
+  test('no individual resource exceeds 200 KB', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const resources = await page.evaluate(() => {
+      return (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).map(r => ({
+        name: r.name.split('/').pop() || r.name,
+        sizeKB: (r.transferSize || 0) / 1024,
+      }));
+    });
+
+    for (const res of resources) {
+      expect(res.sizeKB, `${res.name} exceeds 200 KB`).toBeLessThan(200);
+    }
+  });
+
+  test('all static resources load within 1 second', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const resources = await page.evaluate(() => {
+      return (performance.getEntriesByType('resource') as PerformanceResourceTiming[]).map(r => ({
+        name: r.name.split('/').pop() || r.name,
+        duration: r.duration,
+      }));
+    });
+
+    for (const res of resources) {
+      expect(res.duration, `${res.name} took too long`).toBeLessThan(1000);
+    }
+  });
+
+  test('no long tasks block the main thread during load', async ({ page }, testInfo) => {
+    // Long Task API is Chromium-only
+    test.skip(testInfo.project.name !== 'chromium', 'Long Task API is Chromium-only');
+
+    await page.addInitScript(() => {
+      (window as any).__longTasks = [];
+      try {
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            (window as any).__longTasks.push({
+              duration: entry.duration,
+              startTime: entry.startTime,
+            });
+          }
+        }).observe({ type: 'longtask', buffered: true });
+      } catch {
+        // Observer not supported — leave array empty
+      }
+    });
+
+    await page.goto('/');
+    await page.getByRole('listitem').first().waitFor();
+
+    const longTasks: Array<{ duration: number }> = await page.evaluate(
+      () => (window as any).__longTasks
+    );
+
+    // Long tasks are >50ms by definition — we want zero during page load
+    expect(longTasks, 'No long tasks should block the main thread').toHaveLength(0);
+  });
+});
