@@ -1,53 +1,50 @@
-# This workflow runs your Playwright tests automatically
-# whenever someone opens or updates a pull request.
-#
-# If any test fails, the PR gets blocked from merging.
+# ─────────────────────────────────────────────────────────────
+# QA PIPELINE
+# Runs three jobs in parallel on every push/PR to main:
+#   1. Playwright tests — cross-browser E2E, API, and contract tests
+#   2. Load tests — k6 performance and stress tests
+#   3. Docker — verifies the containerized test suite builds and passes
+# ─────────────────────────────────────────────────────────────
 
-name: Playwright Tests
+name: QA Pipeline
 
-# When does this run?
 on:
-  pull_request:       # runs on every PR
-    branches: [main]  # targeting the main branch
+  pull_request:
+    branches: [main]
   push:
-    branches: [main]  # also runs when code lands on main
+    branches: [main]
 
 jobs:
-  test:
+  # ── Job 1: Playwright ────────────────────────────────────
+  playwright:
+    name: Playwright Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # kill the job if it takes too long
+    timeout-minutes: 15
 
     steps:
-      # Step 1: Check out the code
       - name: Checkout code
         uses: actions/checkout@v5
 
-      # Step 2: Set up Node.js
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
           node-version: 22
+          cache: npm
 
-      # Step 3: Install dependencies
       - name: Install dependencies
         run: npm ci
-        # npm ci is like npm install but faster and stricter
-        # it uses the exact versions from package-lock.json
 
-      # Step 4: Install Playwright browsers
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox webkit
-        # --with-deps also installs system-level dependencies
-        # (fonts, libraries) that the browser needs on Linux
 
-      # Step 5: Run the tests
       - name: Run Playwright tests
-        run: npx playwright test
-        # if ANY test fails, this step fails,
-        # which fails the whole workflow,
-        # which blocks the PR from merging
+        run: npx playwright test --ignore-snapshots --grep-invert "sauce-demo"
+        # --ignore-snapshots: visual regression baselines are OS-specific
+        #   (generated on macOS, CI runs Linux) so we skip screenshot comparisons
+        # --grep-invert "sauce-demo": sauce-demo tests hit an external site
+        #   (saucedemo.com) which we don't control — excluding them prevents
+        #   false failures when that site is slow or down
 
-      # Step 6: Always upload test report (pass or fail)
       - name: Upload test report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -55,5 +52,63 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 30
-        # saves the full HTML report, screenshots, and traces
-        # available as a downloadable artifact on the Actions tab
+
+  # ── Job 2: Load tests ───────────────────────────────────
+  load-test:
+    name: k6 Load Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: Start server
+        run: node server.js &
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 10); do
+            curl -s http://localhost:4173/api/tracks > /dev/null && break
+            sleep 1
+          done
+
+      - name: Run load test
+        run: k6 run load-tests/api-load.js
+
+      - name: Run stress test
+        run: k6 run load-tests/api-stress.js
+
+  # ── Job 3: Docker ───────────────────────────────────────
+  docker:
+    name: Docker Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Build and run tests in Docker
+        run: docker compose up --build --exit-code-from tests
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down
