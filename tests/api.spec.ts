@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { z } from 'zod';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API TESTING
@@ -623,3 +624,198 @@ test.describe('HEAD requests', () => {
     expect(response.headers()['content-type']).toContain('text/html');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API CONTRACT TESTING
+// Validates response shapes against zod schemas. Catches breaking changes —
+// missing fields, wrong types, unexpected values — that value-based tests miss.
+// The schema is the single source of truth for the API contract.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// ── Contract schemas ────────────────────────────────────────────────────────
+
+const TrackSchema = z.object({
+  id: z.number().int().positive(),
+  title: z.string().min(1),
+  artist: z.string().min(1),
+  bpm: z.number().int().positive(),
+  genre: z.string().min(1),
+  key: z.string().min(1),
+  duration: z.number().positive(),
+  freq: z.number().positive(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex color'),
+});
+
+const TrackListSchema = z.array(TrackSchema);
+
+const ErrorSchema = z.object({
+  error: z.string().min(1),
+});
+
+// ── Contract tests ──────────────────────────────────────────────────────────
+
+test.describe('API contract: GET /api/tracks', () => {
+  test('response matches the track list contract', async ({ request }) => {
+    const response = await request.get('/api/tracks');
+    const body = await response.json();
+
+    const result = TrackListSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('filtered response still matches the contract', async ({ request }) => {
+    const response = await request.get('/api/tracks?genre=Techno');
+    const body = await response.json();
+
+    const result = TrackListSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('search response matches the contract', async ({ request }) => {
+    const response = await request.get('/api/tracks?search=midnight');
+    const body = await response.json();
+
+    const result = TrackListSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('empty result is still a valid array', async ({ request }) => {
+    const response = await request.get('/api/tracks?genre=Nonexistent');
+    const body = await response.json();
+
+    const result = TrackListSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+    expect(body).toHaveLength(0);
+  });
+});
+
+test.describe('API contract: GET /api/tracks/:id', () => {
+  test('single track response matches the contract', async ({ request }) => {
+    const response = await request.get('/api/tracks/1');
+    const body = await response.json();
+
+    const result = TrackSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('404 response matches the error contract', async ({ request }) => {
+    const response = await request.get('/api/tracks/999', {
+      failOnStatusCode: false,
+    });
+    const body = await response.json();
+
+    expect(response.status()).toBe(404);
+    const result = ErrorSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('400 response matches the error contract', async ({ request }) => {
+    const response = await request.get('/api/tracks/abc', {
+      failOnStatusCode: false,
+    });
+    const body = await response.json();
+
+    expect(response.status()).toBe(400);
+    const result = ErrorSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+});
+
+test.describe('API contract: POST /api/tracks', () => {
+  test('created track matches the contract', async ({ request }) => {
+    const response = await request.post('/api/tracks', {
+      data: {
+        title: 'Test Track',
+        artist: 'Test Artist',
+        bpm: 120,
+        genre: 'House',
+        key: 'Am',
+        duration: 15,
+        freq: 220,
+        color: '#ff00ff',
+      },
+    });
+    const body = await response.json();
+
+    expect(response.status()).toBe(201);
+    const result = TrackSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+
+  test('created track gets an auto-incremented id', async ({ request }) => {
+    const response = await request.post('/api/tracks', {
+      data: { title: 'New Track', artist: 'New Artist', bpm: 100, genre: 'Ambient', key: 'Cm', duration: 10, freq: 300, color: '#aabbcc' },
+    });
+    const body = await response.json();
+
+    expect(body.id).toBe(7); // 6 default tracks, next is 7
+  });
+
+  test('validation error matches the error contract', async ({ request }) => {
+    const response = await request.post('/api/tracks', {
+      data: { title: '', artist: '' },
+      failOnStatusCode: false,
+    });
+    const body = await response.json();
+
+    expect(response.status()).toBe(400);
+    const result = ErrorSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+  });
+});
+
+test.describe('API contract: PUT /api/tracks/:id', () => {
+  test('updated track matches the contract', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { title: 'Updated Title' },
+    });
+    const body = await response.json();
+
+    expect(response.status()).toBe(200);
+    const result = TrackSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+    expect(body.title).toBe('Updated Title');
+  });
+
+  test('partial update preserves all contract fields', async ({ request }) => {
+    const response = await request.put('/api/tracks/1', {
+      data: { bpm: 140 },
+    });
+    const body = await response.json();
+
+    // Even a partial update should return the full object matching the contract
+    const result = TrackSchema.safeParse(body);
+    expect(result.success, formatZodError(result)).toBe(true);
+    expect(body.bpm).toBe(140);
+    expect(body.title).toBe('Midnight Sessions'); // unchanged field still present
+  });
+});
+
+test.describe('API contract: no unexpected fields', () => {
+  test('track response has no extra properties', async ({ request }) => {
+    const response = await request.get('/api/tracks/1');
+    const body = await response.json();
+
+    const expectedKeys = ['id', 'title', 'artist', 'bpm', 'genre', 'key', 'duration', 'freq', 'color'];
+    const actualKeys = Object.keys(body);
+
+    // Every actual key should be in the expected list (no surprise fields)
+    for (const key of actualKeys) {
+      expect(expectedKeys, `Unexpected field: "${key}"`).toContain(key);
+    }
+    // Every expected key should be in the actual response (no missing fields)
+    for (const key of expectedKeys) {
+      expect(actualKeys, `Missing field: "${key}"`).toContain(key);
+    }
+  });
+});
+
+// ── Helper ──────────────────────────────────────────────────────────────────
+
+/** Formats zod validation errors into a readable test failure message */
+function formatZodError(result: z.SafeParseReturnType<unknown, unknown>): string {
+  if (result.success) return '';
+  return result.error.issues
+    .map((i) => `${i.path.join('.')}: ${i.message}`)
+    .join('\n');
+}
