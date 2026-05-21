@@ -15,9 +15,11 @@ services:
     build:
       context: .
       target: tests
+    # Share the app container's network stack so Chromium can reach
+    # the server at localhost — avoids Docker DNS issues with browsers
+    network_mode: "service:app"
     depends_on:
       app:
         condition: service_healthy
     environment:
       - CI=true
-      - BASE_URL=http://app:4173
