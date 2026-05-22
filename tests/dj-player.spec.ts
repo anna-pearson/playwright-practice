@@ -163,7 +163,7 @@ class DjPlayerPage {
 // 1 · PAGE LOAD & INITIAL STATE
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Page load & initial state', () => {
-  test('page has the correct title', async ({ page }) => {
+  test('@smoke page has the correct title', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(page).toHaveTitle('MixDeck — DJ Mix Player');
@@ -225,7 +225,7 @@ test.describe('Page load & initial state', () => {
     await expect(player.btnMute).toBeVisible();
   });
 
-  test('all six tracks are rendered in the tracklist', async ({ page }) => {
+  test('@smoke all six tracks are rendered in the tracklist', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
     await expect(player.trackItems).toHaveCount(6);
@@ -309,7 +309,7 @@ test.describe('Tracklist — content & structure', () => {
 // 3 · TRACK SELECTION
 // ─────────────────────────────────────────────────────────────────────────────
 test.describe('Track selection', () => {
-  test('clicking a track loads it into the "Now Playing" panel', async ({ page }) => {
+  test('@smoke clicking a track loads it into the "Now Playing" panel', async ({ page }) => {
     await stubAudio(page);
     const player = new DjPlayerPage(page);
     await player.goto();
@@ -427,7 +427,7 @@ test.describe('Playback controls', () => {
     await expect(player.btnPause).toBeVisible();
   });
 
-  test('play icon hides and pause icon appears when playing', async ({ page }) => {
+  test('@smoke play icon hides and pause icon appears when playing', async ({ page }) => {
     await stubAudio(page);
     const player = new DjPlayerPage(page);
     await player.goto();
@@ -810,7 +810,7 @@ test.describe('Search', () => {
     await expect(player.searchInput).toHaveAttribute('placeholder', 'Search mixes...');
   });
 
-  test('typing filters the tracklist by title', async ({ page }) => {
+  test('@smoke typing filters the tracklist by title', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
 
@@ -942,7 +942,7 @@ test.describe('Genre filters', () => {
     });
   }
 
-  test('clicking a genre marks it as "active"', async ({ page }) => {
+  test('@smoke clicking a genre marks it as "active"', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
 
@@ -1287,7 +1287,7 @@ test.describe('Accessibility', () => {
     expect(results.violations.filter(v => v.impact === 'serious')).toHaveLength(0);
   });
 
-  test('axe scan: full WCAG 2.1 AA compliance check', async ({ page }) => {
+  test('@smoke axe scan: full WCAG 2.1 AA compliance check', async ({ page }) => {
     const player = new DjPlayerPage(page);
     await player.goto();
 

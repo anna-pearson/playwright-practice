@@ -54,7 +54,7 @@ test.describe('XSS (Cross-Site Scripting)', () => {
     expect(tracks).toHaveLength(0);
   });
 
-  test('stored XSS payload is returned as-is in GET (not executed)', async ({ page, request }) => {
+  test('@smoke stored XSS payload is returned as-is in GET (not executed)', async ({ page, request }) => {
     // Create a track with an XSS payload
     await request.post('/api/tracks', {
       data: { title: '<script>window.__xss=true</script>', artist: 'Test' },

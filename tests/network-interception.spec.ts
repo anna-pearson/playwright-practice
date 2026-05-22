@@ -136,7 +136,7 @@ test.describe('Network interception', () => {
     await expect(page.getByRole('listitem')).toHaveCount(0);
   });
 
-  test('app does not throw when /api/tracks is unreachable', async ({ page }) => {
+  test('@smoke app does not throw when /api/tracks is unreachable', async ({ page }) => {
     // Block the API endpoint entirely
     await page.route('**/api/tracks', (route) => route.abort());
 

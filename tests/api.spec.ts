@@ -17,7 +17,7 @@ test.beforeEach(async ({ request }) => {
 });
 
 test.describe('GET /api/tracks', () => {
-  test('returns all 6 tracks', async ({ request }) => {
+  test('@smoke returns all 6 tracks', async ({ request }) => {
     const response = await request.get('/api/tracks');
 
     expect(response.status()).toBe(200);
@@ -187,7 +187,7 @@ test.describe('GET /api/tracks/:id', () => {
 });
 
 test.describe('POST /api/tracks', () => {
-  test('creates a new track and returns 201', async ({ request }) => {
+  test('@smoke creates a new track and returns 201', async ({ request }) => {
     const newTrack = {
       title: 'Test Track',
       artist: 'Test Artist',
@@ -572,7 +572,7 @@ test.describe('Search edge cases', () => {
 });
 
 test.describe('Full CRUD lifecycle', () => {
-  test('create → read → update → delete a track', async ({ request }) => {
+  test('@smoke create → read → update → delete a track', async ({ request }) => {
     // Create
     const createRes = await request.post('/api/tracks', {
       data: { title: 'Lifecycle Track', artist: 'CRUD Test', bpm: 140, genre: 'Trance' },

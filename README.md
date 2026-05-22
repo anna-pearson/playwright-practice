@@ -1,95 +1,72 @@
-# DJ Mix Player — Playwright Test Suite
+# DJ Mix Player — QA Test Suite
 
-[![Playwright Tests](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml/badge.svg)](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml)
+[![QA Pipeline](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml/badge.svg)](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml)
 
-825-test Playwright suite covering two web applications across Chromium, Firefox, WebKit, and mobile viewports. Tests span E2E, API, accessibility (axe-core WCAG 2.1 AA), visual regression, performance (Core Web Vitals), network interception, and keyboard navigation.
+**1,058 automated tests** across 6 test files, covering E2E, API, security, accessibility, performance, visual regression, mobile responsiveness, network interception, and load testing. Runs across Chromium, Firefox, WebKit, and mobile viewports via a 3-job parallel CI/CD pipeline.
 
-## The apps
+## Architecture
 
-**DJ Mix Player** — A single-page DJ player built with vanilla HTML/CSS/JS and an Express API. Features include a 6-track library with genre/BPM/key metadata, playback controls, volume with mute, search filtering, genre filters, keyboard shortcuts, waveform visualization, and responsive layout.
-
-**Sauce Demo** — E2E tests against [saucedemo.com](https://www.saucedemo.com), a third-party e-commerce app. Covers login flows, inventory browsing, cart management, and full checkout.
-
-## Test coverage
-
-### DJ Player (172 tests)
-
-| Category | Tests | What's covered |
-|----------|-------|----------------|
-| Page load & initial state | 13 | Title, track rendering, default UI state, volume |
-| Tracklist content | 8 | Metadata accuracy for all 6 tracks, column headers, keyboard reachability |
-| Track selection | 9 | Click, keyboard (Enter/Space), active state, auto-play |
-| Playback controls | 14 | Play/pause, next/prev, wrapping, auto-advance, progress |
-| Seeking | 4 | Keyboard seek, progress bar click, ARIA attributes |
-| Volume controls | 11 | Slider, mute/unmute, persistence, icon state, boundary values |
-| Mobile responsive | 1 | Volume controls hidden on mobile viewport |
-| Search | 11 | Title/artist/genre/key filtering, case-insensitive, empty states |
-| Genre filters | 8 | Single filter, combined with search, active state, clearing |
-| Keyboard shortcuts | 14 | All shortcuts, focus guards, wrap-around, case-insensitive |
-| Accessibility | 20 | ARIA labels/roles, regions, axe-core WCAG 2.1 AA scans |
-| Edge cases | 11 | Rapid clicks, boundary conditions, viewport sizes, whitespace |
-| Visual feedback | 4 | EQ bars on active track, volume persistence across tracks |
-| Visual regression | 6 | Screenshot baselines: default, playing, filtered, search, no-results, muted |
-| Drag seeking | 3 | Mousedown-mousemove-mouseup on progress bar, mid-drag state |
-| Playback + filter interaction | 5 | Genre filter during playback, filtered-out track continues, search during playback |
-| Track number display | 5 | Numeric indices, EQ bar replacement, renumbering on filter |
-| Search input isolation | 4 | "m" key doesn't mute, Shift+Arrow doesn't skip while typing |
-| Play/pause resilience | 4 | Multi-cycle toggle, rapid toggling, mid-playback track switch |
-| Performance | 9 | TTFB, FCP, LCP, CLS, API latency, page weight, resource timing, long tasks |
-
-### Sauce Demo (14 tests)
-
-| Category | Tests | What's covered |
-|----------|-------|----------------|
-| Login | 4 | Valid credentials, locked user, invalid password, empty username |
-| Inventory | 4 | Product count, metadata, sort by price, sort by name |
-| Cart | 3 | Add to cart badge, item appears in cart, remove updates badge |
-| Checkout | 3 | Navigation, empty form validation, full checkout flow |
-
-### API (55 tests)
-
-| Category | Tests | What's covered |
-|----------|-------|----------------|
-| GET endpoints | 10 | Status codes, content types, JSON structure, static assets |
-| POST /api/tracks | 6 | Create track, validation, missing fields, empty body |
-| PUT /api/tracks/:id | 7 | Update fields, partial update, validation, 404 |
-| DELETE /api/tracks/:id | 4 | Delete track, 404, invalid ID |
-| Filtering & search | 8 | Genre filter, search query, combined filters, no results |
-| Error handling | 6 | 404 routes, invalid IDs, NaN IDs, empty strings |
-| Concurrency | 2 | Parallel requests, create-then-read consistency |
-| CRUD lifecycle | 1 | Full create-read-update-delete flow |
-| Search edge cases | 7 | Case sensitivity, partial match, special characters, URL encoding |
-| HEAD requests | 2 | Headers without body for API and HTML routes |
-
-### Network Interception (10 tests)
-
-| Category | Tests | What's covered |
-|----------|-------|----------------|
-| Network interception | 10 | CSS blocking, response modification, slow connections, asset verification, API error simulation |
-
-### Cross-browser matrix
-
-All E2E tests run across 4 browser projects (Chromium, Firefox, WebKit, mobile/iPhone 14), producing **825 total test runs** from 251 unique tests. API tests run once (no browser needed). Chromium-only tests (LCP, CLS, long tasks) are skipped on other browsers.
-
-## Key patterns
-
-### Audio stubbing
-
-Replaces `HTMLAudioElement` with a controllable fake via `page.addInitScript()`, enabling headless CI without real media decoding:
-
-```typescript
-async function stubAudio(page: Page) {
-  await page.addInitScript(() => {
-    // Replace audio prototype methods with controllable fakes
-    // Simulates play/pause, currentTime progression, ended events
-  });
-}
+```
+├── tests/
+│   ├── dj-player.spec.ts       # 172 E2E tests (page object model)
+│   ├── api.spec.ts             # 68 API + contract tests (zod schemas)
+│   ├── security.spec.ts        # 39 security tests (XSS, injection, abuse)
+│   ├── mobile.spec.ts          # 16 mobile-specific tests
+│   ├── network-interception.spec.ts  # 10 network tests
+│   ├── sauce-demo.spec.ts      # 14 third-party e-commerce tests
+│   └── helpers/
+│       └── test-data.ts        # Test data factory
+├── load-tests/
+│   ├── api-load.js             # k6 load test (30 VUs)
+│   └── api-stress.js           # k6 stress test (200 VUs)
+├── docs/
+│   ├── test-plan-sauce-demo.md # Formal test plan
+│   ├── test-coverage-matrix.md # Feature-to-test mapping
+│   ├── accessibility-audit.md  # WCAG 2.1 AA audit report
+│   └── bug-report-x-powered-by.md  # Security finding
+├── Dockerfile                  # Multi-stage build (app + tests)
+├── docker-compose.yml          # Containerized test execution
+└── .github/workflows/tests.yml # 3-job parallel CI pipeline
 ```
 
+## Test Categories
+
+| Category | Tests | What it proves |
+|----------|-------|----------------|
+| E2E (DJ Player) | 172 | Full user journey testing with page objects |
+| API + Contract | 68 | REST validation + zod schema enforcement |
+| Security | 39 | XSS, injection, path traversal, prototype pollution |
+| Mobile | 16 | Responsive layout, touch targets, breakpoint behavior |
+| Network Interception | 10 | Graceful degradation, error handling |
+| Sauce Demo | 14 | Testing against third-party apps |
+| Performance | 9 | Core Web Vitals (FCP, LCP, CLS, TTFB) |
+| Visual Regression | 6 | Screenshot baselines across browsers |
+| Accessibility | 18 | ARIA, axe-core WCAG 2.1 AA scans |
+| Load Testing | 2 suites | k6 stress testing to 200 concurrent users |
+
+## CI/CD Pipeline
+
+Three jobs run in parallel on every push:
+
+| Job | What it does | Time |
+|-----|--------------|------|
+| **Playwright Tests** | Full suite across all browsers (excludes visual regression + sauce-demo in CI) | ~7 min |
+| **k6 Load Tests** | Runs load + stress tests against the Express API | ~3 min |
+| **Docker Build & Test** | Builds containers and runs the suite in Docker | ~2 min |
+
+## Smoke Tests
+
+12 critical tests tagged `@smoke` for fast validation (~3 seconds):
+
+```bash
+npx playwright test --grep "@smoke"
+```
+
+Covers: page load, track selection, playback, search, genre filter, API CRUD, XSS protection, error handling, and WCAG compliance.
+
+## Key Patterns
+
 ### Page Object Model
-
-All locators are centralized in a `DjPlayerPage` class:
-
 ```typescript
 const player = new DjPlayerPage(page);
 await player.goto();
@@ -97,85 +74,90 @@ await player.clickTrack(0);
 await expect(player.trackTitle).toHaveText('Midnight Sessions');
 ```
 
-### Visual regression
-
-Screenshot baselines per browser/OS, with waveform canvas masked to prevent false positives:
-
+### Contract Testing (zod)
 ```typescript
-await expect(page).toHaveScreenshot('playing-state.png', {
-  mask: [player.waveform],
+const TrackSchema = z.object({
+  id: z.number().int().positive(),
+  title: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+});
+const result = TrackListSchema.safeParse(await response.json());
+expect(result.success, formatZodError(result)).toBe(true);
+```
+
+### Security Testing
+```typescript
+test('@smoke stored XSS payload is returned as-is in GET (not executed)', async ({ page, request }) => {
+  await request.post('/api/tracks', {
+    data: { title: '<script>window.__xss=true</script>', artist: 'Test' },
+  });
+  await page.goto('/');
+  const xssRan = await page.evaluate(() => (window as any).__xss);
+  expect(xssRan).toBeUndefined();
 });
 ```
 
-### Performance via Web Vitals
-
-Measures Core Web Vitals using the browser's Performance API and PerformanceObserver:
-
+### Performance (Core Web Vitals)
 ```typescript
 await page.addInitScript(() => {
   (window as any).__cls = 0;
   new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
-      if (!(entry as any).hadRecentInput) {
+      if (!(entry as any).hadRecentInput)
         (window as any).__cls += (entry as any).value;
-      }
     }
   }).observe({ type: 'layout-shift', buffered: true });
 });
 ```
 
-### Network interception
-
-Uses `page.route()` to test how the app handles degraded network conditions:
-
+### Test Data Factory
 ```typescript
-await page.route('**/styles.css', (route) => route.abort());
-await page.goto('/');
-await expect(page.getByRole('listitem')).toHaveCount(6);
+import { createTrack, createInvalidTrack } from './helpers/test-data';
+
+const track = createTrack({ bpm: 200, genre: 'Trance' });
+const invalid = createInvalidTrack('no-title');
 ```
 
-### Conditional test execution
-
-Tests skip gracefully when they don't apply to the current browser project:
-
-```typescript
-test('volume slider defaults to 80', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'Volume controls are hidden on mobile');
-  // ...
-});
-```
-
-## Running tests
+## Running Tests
 
 ```bash
-# Install dependencies
-npm install
-npx playwright install
-
-# Run all tests (all browsers)
+# Full suite (all browsers)
 npx playwright test
 
-# Run a single browser
-npx playwright test --project=chromium
+# Smoke tests only (~3 seconds)
+npx playwright test --grep "@smoke"
 
-# Run a specific category
-npx playwright test -g "Performance"
+# Single category
+npx playwright test tests/security.spec.ts
+npx playwright test tests/mobile.spec.ts --project=mobile
 
-# Run with visible browser
-npx playwright test --headed
+# Load testing
+k6 run load-tests/api-load.js
+k6 run load-tests/api-stress.js
 
-# Update visual regression baselines
+# Docker (containerized)
+docker compose up --build --exit-code-from tests
+
+# Visual regression baselines
 npx playwright test --update-snapshots -g "Visual regression"
 ```
 
-## CI
+## Documentation
 
-Tests run automatically on every push via GitHub Actions. The workflow installs dependencies, sets up Playwright browsers, starts the Express server, and runs the full suite with HTML reporting and failure artifacts.
+| Document | Purpose |
+|----------|---------|
+| [Test Plan](docs/test-plan-sauce-demo.md) | Formal test plan with scope, risk assessment, and P0/P1/P2 prioritization |
+| [Coverage Matrix](docs/test-coverage-matrix.md) | Feature-to-test mapping with gap analysis |
+| [Accessibility Audit](docs/accessibility-audit.md) | WCAG 2.1 AA compliance report (36 rules passed) |
+| [Bug Report](docs/bug-report-x-powered-by.md) | Security finding: X-Powered-By header disclosure |
 
-## Built with
+## Built With
 
-- [Playwright](https://playwright.dev/) — Browser testing framework
-- [axe-core](https://github.com/dequelabs/axe-core) — Accessibility scanning (WCAG 2.1 AA)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Express](https://expressjs.com/) — API server
-- [GitHub Actions](https://github.com/features/actions) — CI/CD
+- [Playwright](https://playwright.dev/) — Cross-browser test automation
+- [axe-core](https://github.com/dequelabs/axe-core) — WCAG accessibility scanning
+- [zod](https://zod.dev/) — API contract schema validation
+- [k6](https://k6.io/) — Load and stress testing
+- [Docker](https://www.docker.com/) — Containerized test execution
+- [GitHub Actions](https://github.com/features/actions) — CI/CD pipeline
+- [TypeScript](https://www.typescriptlang.org/) — Type-safe test code
+- [Express](https://expressjs.com/) — API server under test
