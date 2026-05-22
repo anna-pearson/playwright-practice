@@ -367,3 +367,60 @@ test.describe('Response security headers', () => {
     expect(response.headers()['content-type']).toContain('application/json');
   });
 });
+
+test.describe('Rate limiting and abuse resistance', () => {
+  test('server handles 50 rapid-fire requests without dropping any', async ({ request }) => {
+    const promises = Array.from({ length: 50 }, () =>
+      request.get('/api/tracks')
+    );
+    const responses = await Promise.all(promises);
+
+    const failed = responses.filter(r => r.status() !== 200);
+    expect(failed, `${failed.length} requests failed out of 50`).toHaveLength(0);
+  });
+
+  test('server handles 20 concurrent write operations', async ({ request }) => {
+    const promises = Array.from({ length: 20 }, (_, i) =>
+      request.post('/api/tracks', {
+        data: { title: `Rapid ${i}`, artist: 'Stress Test' },
+      })
+    );
+    const responses = await Promise.all(promises);
+
+    const failed = responses.filter(r => r.status() !== 201);
+    expect(failed, `${failed.length} writes failed out of 20`).toHaveLength(0);
+  });
+
+  test('server handles mixed read/write concurrency', async ({ request }) => {
+    const reads = Array.from({ length: 10 }, () =>
+      request.get('/api/tracks')
+    );
+    const writes = Array.from({ length: 5 }, (_, i) =>
+      request.post('/api/tracks', {
+        data: { title: `Mixed ${i}`, artist: 'Test' },
+      })
+    );
+    const deletes = Array.from({ length: 3 }, (_, i) =>
+      request.delete(`/api/tracks/${i + 1}`, { failOnStatusCode: false })
+    );
+
+    const responses = await Promise.all([...reads, ...writes, ...deletes]);
+    const serverErrors = responses.filter(r => r.status() >= 500);
+    expect(serverErrors, 'No 5xx errors under concurrent load').toHaveLength(0);
+  });
+
+  test('rapid creation does not produce duplicate IDs', async ({ request }) => {
+    const promises = Array.from({ length: 10 }, (_, i) =>
+      request.post('/api/tracks', {
+        data: { title: `Dedup ${i}`, artist: 'Test' },
+      })
+    );
+    const responses = await Promise.all(promises);
+    const ids = await Promise.all(
+      responses.map(async r => (await r.json()).id)
+    );
+
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size, 'All IDs should be unique').toBe(ids.length);
+  });
+});
