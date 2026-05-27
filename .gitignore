@@ -3,3 +3,4 @@ playwright-report/
 test-results/
 practice.db
 .vscode/
+test-summary.md

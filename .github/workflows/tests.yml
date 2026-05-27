@@ -13,6 +13,13 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_flaky_detection:
+        description: 'Run flaky test detection (5 repeated runs)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   # ── Job 1: Playwright ────────────────────────────────────
@@ -112,3 +119,106 @@ jobs:
       - name: Cleanup
         if: always()
         run: docker compose down
+
+  # ── Job 4: Flaky test detection (manual trigger) ────────
+  flaky-detection:
+    name: Flaky Test Detection
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: ${{ github.event.inputs.run_flaky_detection == 'true' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run tests 5 times to detect flaky tests
+        run: |
+          echo "# Flaky Test Detection Report" > flaky-report.md
+          echo "" >> flaky-report.md
+          echo "Each test ran 5 times. Flaky tests show inconsistent results." >> flaky-report.md
+          echo "" >> flaky-report.md
+
+          # Run 5 times, collecting results
+          for i in 1 2 3 4 5; do
+            echo "── Run $i/5 ──────────────────────────"
+            npx playwright test \
+              --project=chromium --project=api \
+              --ignore-snapshots \
+              --grep-invert "sauce-demo" \
+              --reporter=json \
+              > "run-$i.json" 2>/dev/null || true
+          done
+
+          # Parse results and find inconsistencies
+          node -e "
+            const fs = require('fs');
+            const results = {};
+
+            for (let i = 1; i <= 5; i++) {
+              try {
+                const data = JSON.parse(fs.readFileSync('run-' + i + '.json', 'utf8'));
+                for (const suite of data.suites || []) {
+                  for (const spec of suite.specs || []) {
+                    const key = spec.title;
+                    if (!results[key]) results[key] = { pass: 0, fail: 0, skip: 0, file: suite.file };
+                    for (const test of spec.tests || []) {
+                      for (const result of test.results || []) {
+                        if (result.status === 'passed') results[key].pass++;
+                        else if (result.status === 'failed') results[key].fail++;
+                        else results[key].skip++;
+                      }
+                    }
+                  }
+                }
+              } catch (e) {}
+            }
+
+            const flaky = Object.entries(results)
+              .filter(([_, r]) => r.pass > 0 && r.fail > 0)
+              .sort((a, b) => b[1].fail - a[1].fail);
+
+            const stable = Object.entries(results).filter(([_, r]) => !(r.pass > 0 && r.fail > 0));
+
+            let report = '';
+            if (flaky.length === 0) {
+              report += '## Result: No flaky tests detected\n\n';
+              report += 'All ' + Object.keys(results).length + ' tests produced consistent results across 5 runs.\n';
+            } else {
+              report += '## Result: ' + flaky.length + ' flaky test(s) found\n\n';
+              report += '| Test | Passed | Failed | File |\n';
+              report += '|------|--------|--------|------|\n';
+              for (const [name, r] of flaky) {
+                report += '| ' + name + ' | ' + r.pass + '/5 | ' + r.fail + '/5 | ' + r.file + ' |\n';
+              }
+              report += '\nThese tests need investigation — they produce different results on identical code.\n';
+            }
+
+            report += '\n## Summary\n\n';
+            report += '- **Total tests:** ' + Object.keys(results).length + '\n';
+            report += '- **Consistently passing:** ' + stable.filter(([_, r]) => r.pass > 0 && r.fail === 0).length + '\n';
+            report += '- **Consistently failing:** ' + stable.filter(([_, r]) => r.fail > 0 && r.pass === 0).length + '\n';
+            report += '- **Flaky:** ' + flaky.length + '\n';
+
+            fs.appendFileSync('flaky-report.md', report);
+            console.log(report);
+          "
+
+      - name: Upload flaky test report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: flaky-test-report
+          path: flaky-report.md
+          retention-days: 30

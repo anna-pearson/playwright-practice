@@ -9,7 +9,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
 
   // always generate both: terminal output + HTML report
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    ['./reporters/markdown-summary.ts'],
+  ],
 
   projects: [
     // API tests hit the server directly — no browser needed, run once
