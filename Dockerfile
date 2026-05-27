@@ -2,7 +2,8 @@
 FROM node:22-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: skip the "prepare" hook (it runs git, which isn't in this image)
+RUN npm ci --ignore-scripts
 
 # ── Stage 2: App server ─────────────────────────────────
 FROM node:22-slim AS app
