@@ -4,8 +4,8 @@
 
 | Metric | Value |
 |--------|-------|
-| Total tests (all browsers) | 1,058 |
-| Unique test cases | 319 |
+| Total tests (all browsers) | 1,083 |
+| Unique test cases | 344 |
 | Test files | 6 |
 | Browsers | Chromium, Firefox, WebKit, Mobile (iPhone 14) |
 | API tests | Run once (no browser needed) |
@@ -46,7 +46,7 @@
 | Touch interactions | 4 | Full | Tap to select, tap to play, genre filter, navigation |
 | Mobile accessibility | 2 | Full | Touch target sizes, text readability |
 
-### API (tests/api.spec.ts — 68 tests)
+### API (tests/api.spec.ts — 93 tests)
 
 | Feature | Tests | Coverage | Notes |
 |---------|-------|----------|-------|
@@ -63,6 +63,10 @@
 | HEAD requests | 2 | Full | Headers without body |
 | Contract testing (zod) | 13 | Full | Schema validation on all response shapes |
 | ID reuse behavior | 1 | Full | Deleted IDs not reused |
+| Data-driven: valid creation | 6 | Full | Minimal, full, unicode, long, special chars |
+| Data-driven: invalid rejection | 6 | Full | Missing/empty title, artist, null, empty body |
+| Data-driven: search behavior | 7 | Full | Title, artist, genre, case, no-match, key exclusion |
+| Data-driven: HTTP status codes | 6 | Full | Parameterized status code verification |
 
 ### Security (tests/security.spec.ts — 39 tests)
 
