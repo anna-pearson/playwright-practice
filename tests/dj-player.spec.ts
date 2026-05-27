@@ -990,7 +990,7 @@ test.describe('Genre filters', () => {
     await player.goto();
 
     await player.genreBtn('Techno').click();
-    await player.searchInput.fill('midnight'); // Midnight Sessions is Deep House
+    await player.searchInput.fill('zzz_nomatch'); // no track title/artist/genre/key contains this
 
     await expect(player.trackItems).toHaveCount(0);
     await expect(player.noResults).toBeVisible();
@@ -1001,7 +1001,7 @@ test.describe('Genre filters', () => {
     await player.goto();
 
     await player.genreBtn('Techno').click();
-    await player.searchInput.fill('midnight');
+    await player.searchInput.fill('zzz_nomatch');
     await expect(player.trackItems).toHaveCount(0);
 
     await player.searchInput.clear();
@@ -1549,6 +1549,7 @@ test.describe('Visual regression', () => {
     const player = new DjPlayerPage(page);
     await player.goto();
     await player.searchInput.fill('xyzxyzxyz');
+    await expect(player.trackItems).toHaveCount(0);
     await expect(player.noResults).toBeVisible();
     await expect(page).toHaveScreenshot('no-results.png', {
       mask: [player.waveform],

@@ -2,7 +2,7 @@
 
 [![QA Pipeline](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml/badge.svg)](https://github.com/anna-pearson/playwright-test-suite/actions/workflows/tests.yml)
 
-**1,058 automated tests** across 6 test files, covering E2E, API, security, accessibility, performance, visual regression, mobile responsiveness, network interception, and load testing. Runs across Chromium, Firefox, WebKit, and mobile viewports via a 3-job parallel CI/CD pipeline.
+**1,083 automated tests** across 6 test files, covering E2E, API, security, accessibility, performance, visual regression, mobile responsiveness, network interception, and load testing. Runs across Chromium, Firefox, WebKit, and mobile viewports via a 4-job parallel CI/CD pipeline.
 
 ## Architecture
 
@@ -19,14 +19,17 @@
 ├── load-tests/
 │   ├── api-load.js             # k6 load test (30 VUs)
 │   └── api-stress.js           # k6 stress test (200 VUs)
+├── reporters/
+│   └── markdown-summary.ts     # Custom reporter (generates test-summary.md)
 ├── docs/
-│   ├── test-plan-sauce-demo.md # Formal test plan
+│   ├── test-plan-mixdeck.md    # Full test plan (white-box, owned app)
+│   ├── test-plan-sauce-demo.md # Test plan (black-box, third-party app)
 │   ├── test-coverage-matrix.md # Feature-to-test mapping
 │   ├── accessibility-audit.md  # WCAG 2.1 AA audit report
 │   └── bug-report-x-powered-by.md  # Security finding
 ├── Dockerfile                  # Multi-stage build (app + tests)
 ├── docker-compose.yml          # Containerized test execution
-└── .github/workflows/tests.yml # 3-job parallel CI pipeline
+└── .github/workflows/tests.yml # 4-job CI pipeline
 ```
 
 ## Test Categories
@@ -34,7 +37,7 @@
 | Category | Tests | What it proves |
 |----------|-------|----------------|
 | E2E (DJ Player) | 172 | Full user journey testing with page objects |
-| API + Contract | 68 | REST validation + zod schema enforcement |
+| API + Contract | 93 | REST validation + zod schema enforcement |
 | Security | 39 | XSS, injection, path traversal, prototype pollution |
 | Mobile | 16 | Responsive layout, touch targets, breakpoint behavior |
 | Network Interception | 10 | Graceful degradation, error handling |
@@ -46,13 +49,14 @@
 
 ## CI/CD Pipeline
 
-Three jobs run in parallel on every push:
+Four jobs in the CI pipeline:
 
-| Job | What it does | Time |
-|-----|--------------|------|
-| **Playwright Tests** | Full suite across all browsers (excludes visual regression + sauce-demo in CI) | ~7 min |
-| **k6 Load Tests** | Runs load + stress tests against the Express API | ~3 min |
-| **Docker Build & Test** | Builds containers and runs the suite in Docker | ~2 min |
+| Job | Trigger | What it does |
+|-----|---------|--------------|
+| **Playwright Tests** | Every push/PR | Full suite across all browsers |
+| **k6 Load Tests** | Every push/PR | Load + stress tests against the API |
+| **Docker Build & Test** | Every push/PR | Containerized test execution |
+| **Flaky Detection** | Manual | Runs suite 5x, reports inconsistent tests |
 
 ## Smoke Tests
 
@@ -146,7 +150,8 @@ npx playwright test --update-snapshots -g "Visual regression"
 
 | Document | Purpose |
 |----------|---------|
-| [Test Plan](docs/test-plan-sauce-demo.md) | Formal test plan with scope, risk assessment, and P0/P1/P2 prioritization |
+| [Test Plan — MixDeck](docs/test-plan-mixdeck.md) | Full test plan: scope, risk assessment, entry/exit criteria, known issues |
+| [Test Plan — Sauce Demo](docs/test-plan-sauce-demo.md) | Black-box test plan for third-party e-commerce app |
 | [Coverage Matrix](docs/test-coverage-matrix.md) | Feature-to-test mapping with gap analysis |
 | [Accessibility Audit](docs/accessibility-audit.md) | WCAG 2.1 AA compliance report (36 rules passed) |
 | [Bug Report](docs/bug-report-x-powered-by.md) | Security finding: X-Powered-By header disclosure |

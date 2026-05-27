@@ -3,7 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './tests',
   timeout: 30000,
-  workers: process.env.CI ? 2 : 5,
+  // 1 worker locally to avoid shared-server race conditions;
+  // CI uses 2 workers with a retry to handle any residual flakiness
+  workers: process.env.CI ? 2 : 1,
 
   // retry failed tests once in CI to handle flakiness
   retries: process.env.CI ? 1 : 0,
@@ -18,12 +20,13 @@ export default defineConfig({
   projects: [
     // API tests hit the server directly — no browser needed, run once
     { name: 'api', testMatch: 'api.spec.ts' },
-    // E2E tests run in all 3 browsers
+    // Locally: chromium only. CI: all browsers + mobile.
     { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'api.spec.ts' },
-    { name: 'firefox', use: { browserName: 'firefox' }, testIgnore: 'api.spec.ts' },
-    { name: 'webkit', use: { browserName: 'webkit' }, testIgnore: 'api.spec.ts' },
-    // Mobile viewport — runs E2E tests at iPhone screen size
-    { name: 'mobile', use: { ...devices['iPhone 14'] }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
+    ...( process.env.CI ? [
+      { name: 'firefox', use: { browserName: 'firefox' }, testIgnore: 'api.spec.ts' },
+      { name: 'webkit', use: { browserName: 'webkit' }, testIgnore: 'api.spec.ts' },
+      { name: 'mobile', use: { ...devices['iPhone 14'] }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
+    ] : []),
   ],
 
   use: {

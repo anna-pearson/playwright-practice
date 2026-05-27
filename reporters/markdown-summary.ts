@@ -28,6 +28,7 @@ interface TestRecord {
   status: 'passed' | 'failed' | 'skipped' | 'flaky';
   duration: number;
   error?: string;
+  skipReason?: string;
   retry: number;
 }
 
@@ -46,6 +47,10 @@ class MarkdownSummaryReporter implements Reporter {
     // A test that failed initially but passed on retry is flaky
     const isFlaky = result.status === 'passed' && result.retry > 0;
 
+    // Extract skip reason from test annotations (set by test.skip(condition, reason))
+    const skipAnnotation = test.annotations.find(a => a.type === 'skip');
+    const skipReason = skipAnnotation?.description;
+
     this.records.push({
       title: test.title,
       file,
@@ -55,6 +60,7 @@ class MarkdownSummaryReporter implements Reporter {
       error: result.status === 'failed'
         ? result.errors.map(e => e.message || '').join('\n').slice(0, 200)
         : undefined,
+      skipReason,
       retry: result.retry,
     });
   }
@@ -116,6 +122,24 @@ class MarkdownSummaryReporter implements Reporter {
       lines.push(`| ${project} | ${p} | ${f} | ${s} |`);
     }
     lines.push('');
+
+    // Skipped tests — group by reason
+    if (skipped.length > 0) {
+      lines.push('## Skipped Tests');
+      lines.push('');
+
+      const byReason = new Map<string, TestRecord[]>();
+      for (const record of skipped) {
+        const reason = record.skipReason || 'No reason given';
+        if (!byReason.has(reason)) byReason.set(reason, []);
+        byReason.get(reason)!.push(record);
+      }
+
+      for (const [reason, records] of byReason) {
+        lines.push(`**${reason}** (${records.length} tests)`);
+        lines.push('');
+      }
+    }
 
     // Failures
     if (failed.length > 0) {
