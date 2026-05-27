@@ -810,6 +810,103 @@ test.describe('API contract: no unexpected fields', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA-DRIVEN TESTS
+// Uses parameterized test arrays to validate multiple inputs against a single
+// test template. This pattern reduces duplication and makes it easy to add
+// new test cases — just add a row to the data array.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const validTrackInputs = [
+  { name: 'minimal (required fields only)',  data: { title: 'Minimal', artist: 'Test' } },
+  { name: 'full fields',                     data: { title: 'Full', artist: 'Test', bpm: 140, genre: 'Trance', key: 'Am', duration: 20, freq: 440, color: '#ff00ff' } },
+  { name: 'high BPM',                        data: { title: 'Fast', artist: 'Test', bpm: 300 } },
+  { name: 'unicode title',                   data: { title: '日本語トラック', artist: 'テスト' } },
+  { name: 'long title',                      data: { title: 'A'.repeat(200), artist: 'Test' } },
+  { name: 'special characters in artist',    data: { title: 'Test', artist: "DJ O'Brien & The 808s" } },
+];
+
+test.describe('Data-driven: valid track creation', () => {
+  for (const { name, data } of validTrackInputs) {
+    test(`POST /api/tracks accepts ${name}`, async ({ request }) => {
+      const response = await request.post('/api/tracks', { data });
+      expect(response.status()).toBe(201);
+
+      const track = await response.json();
+      expect(track.title).toBe(data.title);
+      expect(track.artist).toBe(data.artist);
+      expect(track.id).toBeDefined();
+    });
+  }
+});
+
+const invalidTrackInputs = [
+  { name: 'missing title',       data: { artist: 'Test' },                 error: 'required' },
+  { name: 'missing artist',      data: { title: 'Test' },                  error: 'required' },
+  { name: 'empty title',         data: { title: '', artist: 'Test' },      error: 'required' },
+  { name: 'empty artist',        data: { title: 'Test', artist: '' },      error: 'required' },
+  { name: 'empty body',          data: {},                                  error: 'required' },
+  { name: 'null title',          data: { title: null, artist: 'Test' },    error: 'required' },
+];
+
+test.describe('Data-driven: invalid track rejection', () => {
+  for (const { name, data, error } of invalidTrackInputs) {
+    test(`POST /api/tracks rejects ${name}`, async ({ request }) => {
+      const response = await request.post('/api/tracks', {
+        data,
+        failOnStatusCode: false,
+      });
+      expect(response.status()).toBe(400);
+
+      const body = await response.json();
+      expect(body.error).toContain(error);
+    });
+  }
+});
+
+const searchTestCases = [
+  { query: 'midnight',   expectedCount: 1, reason: 'exact title word' },
+  { query: 'anna',       expectedCount: 6, reason: 'matches all artists' },
+  { query: 'house',      expectedCount: 3, reason: 'genre + title substring' },
+  { query: 'TECHNO',     expectedCount: 1, reason: 'case-insensitive genre' },
+  { query: 'xyz',        expectedCount: 0, reason: 'no matches' },
+  { query: 'bass',       expectedCount: 2, reason: 'title + genre match' },
+  { query: 'Dm',         expectedCount: 0, reason: 'key is not searched' },
+];
+
+test.describe('Data-driven: search behavior', () => {
+  for (const { query, expectedCount, reason } of searchTestCases) {
+    test(`"${query}" returns ${expectedCount} results (${reason})`, async ({ request }) => {
+      const response = await request.get(`/api/tracks?search=${encodeURIComponent(query)}`);
+      const tracks = await response.json();
+
+      expect(response.status()).toBe(200);
+      expect(tracks).toHaveLength(expectedCount);
+    });
+  }
+});
+
+const httpStatusTestCases = [
+  { method: 'GET',    path: '/api/tracks',      expected: 200, desc: 'list tracks' },
+  { method: 'GET',    path: '/api/tracks/1',     expected: 200, desc: 'get track by ID' },
+  { method: 'GET',    path: '/api/tracks/999',   expected: 404, desc: 'nonexistent track' },
+  { method: 'GET',    path: '/api/tracks/abc',   expected: 400, desc: 'invalid ID' },
+  { method: 'DELETE', path: '/api/tracks/999',   expected: 404, desc: 'delete nonexistent' },
+  { method: 'DELETE', path: '/api/tracks/abc',   expected: 400, desc: 'delete invalid ID' },
+];
+
+test.describe('Data-driven: HTTP status codes', () => {
+  for (const { method, path, expected, desc } of httpStatusTestCases) {
+    test(`${method} ${path} → ${expected} (${desc})`, async ({ request }) => {
+      const response = await request.fetch(path, {
+        method,
+        failOnStatusCode: false,
+      });
+      expect(response.status()).toBe(expected);
+    });
+  }
+});
+
 // ── Helper ──────────────────────────────────────────────────────────────────
 
 /** Formats zod validation errors into a readable test failure message */

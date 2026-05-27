@@ -1,0 +1,25 @@
+#!/bin/sh
+# ─────────────────────────────────────────────────────────────
+# PRE-COMMIT HOOK — Smoke Test Gate
+# Runs the @smoke test suite before every commit. If any smoke
+# test fails, the commit is blocked. This catches critical
+# regressions before they enter version control.
+#
+# Skip with: git commit --no-verify (use sparingly)
+# ─────────────────────────────────────────────────────────────
+
+echo "Running smoke tests before commit..."
+echo ""
+
+npx playwright test --grep "@smoke" --project=chromium --project=api --reporter=list 2>&1
+
+if [ $? -ne 0 ]; then
+  echo ""
+  echo "Smoke tests failed — commit blocked."
+  echo "Fix the failing tests or use --no-verify to skip."
+  exit 1
+fi
+
+echo ""
+echo "Smoke tests passed — committing."
+exit 0
