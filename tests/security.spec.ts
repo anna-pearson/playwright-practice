@@ -348,16 +348,12 @@ test.describe('ID manipulation', () => {
 });
 
 test.describe('Response security headers', () => {
-  test('API does not expose server version', async ({ request }) => {
+  test('API does not expose server version via X-Powered-By', async ({ request }) => {
     const response = await request.get('/api/tracks');
     const headers = response.headers();
 
-    // X-Powered-By can reveal the framework (e.g. "Express") — should be disabled
-    // Note: this test documents the current state; if it fails, that's a finding
-    const poweredBy = headers['x-powered-by'];
-    if (poweredBy) {
-      console.warn(`SECURITY FINDING: X-Powered-By header exposed: "${poweredBy}"`);
-    }
+    // X-Powered-By reveals the framework (e.g. "Express") — should be disabled
+    expect(headers['x-powered-by']).toBeUndefined();
   });
 
   test('API responses have correct content-type', async ({ request }) => {

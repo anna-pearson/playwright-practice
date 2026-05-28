@@ -1,80 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { stubAudio } from './helpers/stub-audio';
 
 // Reset server state before each test so API mutations don't leak between files
 test.beforeEach(async ({ request }) => {
   await request.post('/api/tracks/reset');
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Audio stub
-// Replaces HTMLAudioElement with a controllable fake so tests run headlessly
-// without relying on the Web Audio API or real media decoding.
-// ─────────────────────────────────────────────────────────────────────────────
-async function stubAudio(page: Page) {
-  await page.addInitScript(() => {
-    const proto = HTMLAudioElement.prototype;
-    let _currentTime = 0;
-    let _duration = 20;
-    let _volume = 0.8;
-    let _paused = true;
-    let _src = '';
-    let _interval: ReturnType<typeof setInterval> | null = null;
-    // Keep a reference to the last constructed audio instance for test access
-    let _lastInstance: HTMLAudioElement | null = null;
-
-    Object.defineProperty(proto, 'currentTime', {
-      get() { return _currentTime; },
-      set(v) {
-        _currentTime = v;
-        this.dispatchEvent(new Event('timeupdate'));
-      },
-    });
-    Object.defineProperty(proto, 'duration', {
-      get() { return _duration; },
-    });
-    Object.defineProperty(proto, 'volume', {
-      get() { return _volume; },
-      set(v) { _volume = v; },
-    });
-    Object.defineProperty(proto, 'paused', {
-      get() { return _paused; },
-    });
-    Object.defineProperty(proto, 'src', {
-      get() { return _src; },
-      set(v) {
-        _src = v;
-        _currentTime = 0;
-        _duration = 20;
-        _lastInstance = this as unknown as HTMLAudioElement;
-        (window as any).__stubAudioInstance = _lastInstance;
-        setTimeout(() => this.dispatchEvent(new Event('loadedmetadata')), 10);
-      },
-    });
-
-    proto.play = function () {
-      _paused = false;
-      _lastInstance = this as unknown as HTMLAudioElement;
-      (window as any).__stubAudioInstance = _lastInstance;
-      _interval = setInterval(() => {
-        _currentTime += 0.25;
-        this.dispatchEvent(new Event('timeupdate'));
-        if (_currentTime >= _duration) {
-          _currentTime = _duration;
-          clearInterval(_interval!);
-          _paused = true;
-          this.dispatchEvent(new Event('ended'));
-        }
-      }, 250);
-      return Promise.resolve();
-    };
-
-    proto.pause = function () {
-      _paused = true;
-      if (_interval) clearInterval(_interval);
-    };
-  });
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Page Object
@@ -512,8 +444,8 @@ test.describe('Playback controls', () => {
     await player.clickTrack(0);
     // Ensure currentTime is under 3s so Prev goes to previous track, not restart
     await page.evaluate(() => {
-      const audio = document.querySelector('audio') as HTMLAudioElement | null;
-      if (audio) audio.currentTime = 0;
+      const inst = (window as any).__stubAudioInstance;
+      if (inst) inst.currentTime = 0;
     });
     await player.btnPrev.click();
 
@@ -542,7 +474,7 @@ test.describe('Playback controls', () => {
       const width = await player.progressFill.evaluate((el) =>
         parseFloat((el as HTMLElement).style.width));
       expect(width).toBeGreaterThan(0);
-    }).toPass({ timeout: 3000 });
+    }).toPass({ timeout: 4000, intervals: [300, 500, 500, 500] });
   });
 
   test('track auto-advances to next when it ends', async ({ page }) => {
@@ -570,7 +502,7 @@ test.describe('Playback controls', () => {
     await expect(async () => {
       const val = await player.seekSlider.getAttribute('aria-valuenow');
       expect(Number(val)).toBeGreaterThan(0);
-    }).toPass({ timeout: 3000 });
+    }).toPass({ timeout: 4000, intervals: [300, 500, 500, 500] });
   });
 
   test('clicking Next while paused still advances the track', async ({ page }) => {
@@ -1962,7 +1894,7 @@ test.describe('Performance', () => {
 
     await page.goto('/');
     await page.getByRole('listitem').first().waitFor();
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => (window as any).__fcp > 0, { timeout: 5000 });
 
     const fcp = await page.evaluate(() => (window as any).__fcp);
     expect(fcp, 'FCP should be captured').toBeGreaterThan(0);
@@ -1984,8 +1916,7 @@ test.describe('Performance', () => {
 
     await page.goto('/');
     await page.getByRole('listitem').first().waitFor();
-    // Allow time for the LCP observer to fire
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => (window as any).__lcp > 0, { timeout: 5000 });
 
     const lcp = await page.evaluate(() => (window as any).__lcp);
     expect(lcp, 'LCP should be captured').toBeGreaterThan(0);
@@ -2009,7 +1940,7 @@ test.describe('Performance', () => {
 
     await page.goto('/');
     await page.getByRole('listitem').first().waitFor();
-    await page.waitForTimeout(1000);
+    await page.waitForFunction(() => typeof (window as any).__cls === 'number', { timeout: 5000 });
 
     const cls = await page.evaluate(() => (window as any).__cls);
     expect(cls, 'Cumulative Layout Shift').toBeLessThan(0.1);

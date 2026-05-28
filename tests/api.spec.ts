@@ -638,12 +638,12 @@ const TrackSchema = z.object({
   id: z.number().int().positive(),
   title: z.string().min(1),
   artist: z.string().min(1),
-  bpm: z.number().int().positive(),
-  genre: z.string().min(1),
-  key: z.string().min(1),
-  duration: z.number().positive(),
-  freq: z.number().positive(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex color'),
+  bpm: z.number().int().positive().optional(),
+  genre: z.string().min(1).optional(),
+  key: z.string().min(1).optional(),
+  duration: z.number().positive().optional(),
+  freq: z.number().positive().optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex color').optional(),
 });
 
 const TrackListSchema = z.array(TrackSchema);

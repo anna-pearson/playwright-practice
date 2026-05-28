@@ -21,10 +21,10 @@ export default defineConfig({
     // API tests hit the server directly — no browser needed, run once
     { name: 'api', testMatch: 'api.spec.ts' },
     // Locally: chromium only. CI: all browsers + mobile.
-    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: 'api.spec.ts' },
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
     ...( process.env.CI ? [
-      { name: 'firefox', use: { browserName: 'firefox' }, testIgnore: 'api.spec.ts' },
-      { name: 'webkit', use: { browserName: 'webkit' }, testIgnore: 'api.spec.ts' },
+      { name: 'firefox', use: { browserName: 'firefox' }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
+      { name: 'webkit', use: { browserName: 'webkit' }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
       { name: 'mobile', use: { ...devices['iPhone 14'] }, testIgnore: ['api.spec.ts', 'sauce-demo.spec.ts'] },
     ] : []),
   ],

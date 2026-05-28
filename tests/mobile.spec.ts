@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { stubAudio } from './helpers/stub-audio';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOBILE RESPONSIVE TESTING
@@ -13,34 +14,6 @@ test.beforeEach(async ({ request }, testInfo) => {
   await request.post('/api/tracks/reset');
 });
 
-async function stubAudio(page: Page) {
-  await page.addInitScript(() => {
-    const proto = HTMLAudioElement.prototype;
-    let _currentTime = 0;
-    let _paused = true;
-    Object.defineProperty(proto, 'currentTime', {
-      get() { return _currentTime; },
-      set(v) { _currentTime = v; this.dispatchEvent(new Event('timeupdate')); },
-    });
-    Object.defineProperty(proto, 'duration', { get() { return 20; } });
-    Object.defineProperty(proto, 'volume', { get() { return 0.8; }, set() {} });
-    Object.defineProperty(proto, 'paused', { get() { return _paused; } });
-    Object.defineProperty(proto, 'src', {
-      get() { return ''; },
-      set() { _currentTime = 0; },
-    });
-    proto.play = function () {
-      _paused = false;
-      this.dispatchEvent(new Event('play'));
-      return Promise.resolve();
-    };
-    proto.pause = function () {
-      _paused = true;
-      this.dispatchEvent(new Event('pause'));
-    };
-    proto.load = function () {};
-  });
-}
 
 test.describe('Mobile layout', () => {
   test('app renders without horizontal scrollbar', async ({ page }) => {
